@@ -82,3 +82,38 @@ func TestSettingsStore_NextMode(t *testing.T) {
 		t.Errorf("mode = %q, want empty after clear", mode)
 	}
 }
+
+func TestSettingsStore_NextWithSummary(t *testing.T) {
+	store := setupSettingsStore(t)
+	userID := int64(123456)
+
+	// Initially should return false
+	withSummary, err := store.GetAndClearNextWithSummary(userID)
+	if err != nil {
+		t.Fatalf("GetAndClearNextWithSummary() error: %v", err)
+	}
+	if withSummary {
+		t.Error("withSummary = true, want false initially")
+	}
+
+	// Set next with summary
+	err = store.SetNextWithSummary(userID, true)
+	if err != nil {
+		t.Fatalf("SetNextWithSummary() error: %v", err)
+	}
+
+	// Verify and clear
+	withSummary, err = store.GetAndClearNextWithSummary(userID)
+	if err != nil {
+		t.Fatalf("GetAndClearNextWithSummary() error: %v", err)
+	}
+	if !withSummary {
+		t.Error("withSummary = false, want true")
+	}
+
+	// Should be cleared now
+	withSummary, _ = store.GetAndClearNextWithSummary(userID)
+	if withSummary {
+		t.Error("withSummary = true, want false after clear")
+	}
+}
