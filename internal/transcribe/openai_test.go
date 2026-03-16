@@ -1,6 +1,7 @@
 package transcribe
 
 import (
+	"context"
 	"testing"
 )
 
@@ -11,10 +12,20 @@ func TestOpenAITranscriber_Name(t *testing.T) {
 	}
 }
 
-func TestOpenAITranscriber_InvalidAPIKey(t *testing.T) {
-	// This is a unit test that doesn't make actual API calls
+func TestOpenAITranscriber_EmptyAPIKey(t *testing.T) {
 	o := NewOpenAITranscriber("", "whisper-1")
-	if o.apiKey != "" {
-		t.Errorf("apiKey = %q, want empty", o.apiKey)
+
+	_, err := o.Transcribe(context.Background(), "/tmp/test.wav")
+	if err == nil {
+		t.Error("Transcribe() with empty API key should return error")
+	}
+}
+
+func TestOpenAITranscriber_MissingFile(t *testing.T) {
+	o := NewOpenAITranscriber("test-key", "whisper-1")
+
+	_, err := o.Transcribe(context.Background(), "/nonexistent/audio.wav")
+	if err == nil {
+		t.Error("Transcribe() with missing file should return error")
 	}
 }
