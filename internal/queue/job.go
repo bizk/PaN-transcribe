@@ -207,3 +207,11 @@ func (s *JobStore) GetJobsForUser(chatID int64) ([]*Job, error) {
 	}
 	return jobs, nil
 }
+
+func (s *JobStore) SetAudioPath(id int64, audioPath string) error {
+	_, err := s.db.Exec(`UPDATE jobs SET audio_path = ? WHERE id = ?`, audioPath, id)
+	if err != nil {
+		return fmt.Errorf("setting audio path: %w", err)
+	}
+	return nil
+}
