@@ -1,0 +1,28 @@
+telegram:
+  bot_token: "${TELEGRAM_BOT_TOKEN}"
+  allowed_users:
+    - 123456789  # Your Telegram user ID (get it from @userinfobot)
+
+openai:
+  api_key: "${OPENAI_API_KEY}"
+  whisper_model: "whisper-1"
+  summary_model: "gpt-4o-mini"
+
+whisper:
+  model_path: "./whisper.cpp/models/ggml-small.bin"
+  threads: 4
+
+processing:
+  default_mode: "local"  # "local" for whisper.cpp, "cloud" for OpenAI API
+  max_file_size_mb: 100
+  output_retention_days: 30
+
+summary:
+  default_prompt: |
+    Eres un asistente para estudiantes de psicología. Resume esta transcripción
+    de clase incluyendo:
+    - Temas principales cubiertos
+    - Conceptos clave y definiciones
+    - Teorías o autores mencionados
+    - Puntos importantes para estudiar
+    Responde en español.
