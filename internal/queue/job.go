@@ -202,5 +202,8 @@ func (s *JobStore) GetJobsForUser(chatID int64) ([]*Job, error) {
 		job.WithSummary = withSummary == 1
 		jobs = append(jobs, job)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating jobs: %w", err)
+	}
 	return jobs, nil
 }
