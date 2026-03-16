@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/override/pan-transcribe/internal/queue"
@@ -33,6 +34,7 @@ type Worker struct {
 	summaryGenerator *summary.Generator
 	notifier         ResultNotifier
 	stopCh           chan struct{}
+	stopOnce         sync.Once
 }
 
 func New(config Config) *Worker {
@@ -67,6 +69,13 @@ func (w *Worker) SetNotifier(n ResultNotifier) {
 }
 
 func (w *Worker) Start(ctx context.Context) {
+	if w.jobStore == nil {
+		log.Fatal("Worker started without jobStore")
+	}
+	if w.settingsStore == nil {
+		log.Fatal("Worker started without settingsStore")
+	}
+
 	log.Println("Worker started")
 
 	// Reset any jobs that were processing when we last shut down
@@ -92,7 +101,9 @@ func (w *Worker) Start(ctx context.Context) {
 }
 
 func (w *Worker) Stop() {
-	close(w.stopCh)
+	w.stopOnce.Do(func() {
+		close(w.stopCh)
+	})
 }
 
 func (w *Worker) processNextJob(ctx context.Context) {
@@ -117,7 +128,9 @@ func (w *Worker) processNextJob(ctx context.Context) {
 	if err != nil {
 		log.Printf("Job #%d failed: %v", job.ID, err)
 		w.jobStore.Fail(job.ID, err.Error())
-		w.notifier.SendError(job.ChatID, err.Error())
+		if w.notifier != nil {
+			w.notifier.SendError(job.ChatID, err.Error())
+		}
 
 		// Clean up audio file for failed jobs after 1 hour (handled by cleanup task)
 		return
@@ -132,8 +145,10 @@ func (w *Worker) processNextJob(ctx context.Context) {
 	os.Remove(job.AudioPath)
 
 	// Notify user
-	if err := w.notifier.SendResult(job.ChatID, outputPath, summaryPath); err != nil {
-		log.Printf("Error notifying user: %v", err)
+	if w.notifier != nil {
+		if err := w.notifier.SendResult(job.ChatID, outputPath, summaryPath); err != nil {
+			log.Printf("Error notifying user: %v", err)
+		}
 	}
 
 	log.Printf("Job #%d completed successfully", job.ID)
