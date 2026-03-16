@@ -22,10 +22,12 @@ func OpenDB(dbPath string) (*sql.DB, error) {
 	}
 
 	if err := db.Ping(); err != nil {
+		db.Close()
 		return nil, fmt.Errorf("pinging database: %w", err)
 	}
 
 	if err := migrate(db); err != nil {
+		db.Close()
 		return nil, fmt.Errorf("running migrations: %w", err)
 	}
 
@@ -62,5 +64,8 @@ func migrate(db *sql.DB) error {
 	`
 
 	_, err := db.Exec(schema)
-	return err
+	if err != nil {
+		return fmt.Errorf("executing schema: %w", err)
+	}
+	return nil
 }
