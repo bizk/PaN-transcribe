@@ -1,0 +1,8 @@
+data/audio/*
+data/output/*
+logs/*.log
+!data/.gitkeep
+!logs/.gitkeep
+config.yaml
+bin/
+*.db
