@@ -39,10 +39,8 @@ summary:
 	}
 
 	// Set env vars
-	os.Setenv("TELEGRAM_BOT_TOKEN", "test-token")
-	os.Setenv("OPENAI_API_KEY", "test-api-key")
-	defer os.Unsetenv("TELEGRAM_BOT_TOKEN")
-	defer os.Unsetenv("OPENAI_API_KEY")
+	t.Setenv("TELEGRAM_BOT_TOKEN", "test-token")
+	t.Setenv("OPENAI_API_KEY", "test-api-key")
 
 	cfg, err := Load(configPath)
 	if err != nil {
@@ -60,5 +58,50 @@ summary:
 	}
 	if cfg.Processing.MaxFileSizeMB != 100 {
 		t.Errorf("MaxFileSizeMB = %d, want 100", cfg.Processing.MaxFileSizeMB)
+	}
+}
+
+func TestLoadConfigMissingEnvVar(t *testing.T) {
+	// Create temp config file
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+
+	configContent := `
+telegram:
+  bot_token: "${TELEGRAM_BOT_TOKEN}"
+  allowed_users:
+    - 123456789
+
+openai:
+  api_key: "${OPENAI_API_KEY}"
+  whisper_model: "whisper-1"
+  summary_model: "gpt-4o-mini"
+
+whisper:
+  model_path: "./whisper.cpp/models/ggml-small.bin"
+  threads: 4
+
+processing:
+  default_mode: "local"
+  max_file_size_mb: 100
+  output_retention_days: 30
+
+summary:
+  default_prompt: "Summarize this text"
+`
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Set only one env var, leave the other unset
+	t.Setenv("TELEGRAM_BOT_TOKEN", "test-token")
+	// OPENAI_API_KEY is intentionally not set
+
+	cfg, err := Load(configPath)
+	if err == nil {
+		t.Fatal("Load() expected error for missing OPENAI_API_KEY, got nil")
+	}
+	if cfg != nil {
+		t.Errorf("Load() expected nil config, got %v", cfg)
 	}
 }

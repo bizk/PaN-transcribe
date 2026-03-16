@@ -55,7 +55,11 @@ func Load(configPath string) (*Config, error) {
 		val := v.GetString(key)
 		if strings.HasPrefix(val, "${") && strings.HasSuffix(val, "}") {
 			envVar := val[2 : len(val)-1]
-			v.Set(key, os.Getenv(envVar))
+			envVal, exists := os.LookupEnv(envVar)
+			if !exists {
+				return nil, fmt.Errorf("environment variable %s not set (referenced in config key %s)", envVar, key)
+			}
+			v.Set(key, envVal)
 		}
 	}
 
