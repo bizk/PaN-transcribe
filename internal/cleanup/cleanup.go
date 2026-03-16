@@ -54,6 +54,9 @@ func (c *Cleanup) Stop() {
 }
 
 func (c *Cleanup) CleanOldFiles() (int, error) {
+	if c.config.RetentionDays <= 0 {
+		return 0, nil // Skip cleanup if retention not configured
+	}
 	cutoff := time.Now().Add(-time.Duration(c.config.RetentionDays) * 24 * time.Hour)
 	removed := 0
 
@@ -98,6 +101,7 @@ func (c *Cleanup) cleanDirectory(dir string, cutoff time.Time) (int, error) {
 
 		info, err := entry.Info()
 		if err != nil {
+			log.Printf("Warning: failed to get info for %s: %v", entry.Name(), err)
 			continue
 		}
 
