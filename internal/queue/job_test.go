@@ -165,3 +165,47 @@ func TestJobStore_GetPendingBefore(t *testing.T) {
 		t.Errorf("GetPendingBefore() = %d, want 1", count)
 	}
 }
+
+func TestJobStore_ResetProcessingJobs(t *testing.T) {
+	store := setupTestDB(t)
+
+	// Create a job and set to processing
+	job := &Job{ChatID: 1, MessageID: 1, AudioPath: "/tmp/test.wav", Mode: "local"}
+	id, _ := store.Create(job)
+	store.UpdateStatus(id, StatusProcessing)
+
+	// Reset processing jobs
+	err := store.ResetProcessingJobs()
+	if err != nil {
+		t.Fatalf("ResetProcessingJobs() error: %v", err)
+	}
+
+	// Verify it's back to pending
+	got, _ := store.Get(id)
+	if got.Status != StatusPending {
+		t.Errorf("Status = %q, want %q", got.Status, StatusPending)
+	}
+}
+
+func TestJobStore_GetJobsForUser(t *testing.T) {
+	store := setupTestDB(t)
+
+	// Create jobs for user 1
+	for i := 0; i < 3; i++ {
+		job := &Job{ChatID: 1, MessageID: i, AudioPath: "/tmp/test.wav", Mode: "local"}
+		store.Create(job)
+	}
+
+	// Create job for user 2
+	job := &Job{ChatID: 2, MessageID: 1, AudioPath: "/tmp/test.wav", Mode: "local"}
+	store.Create(job)
+
+	// Get jobs for user 1
+	jobs, err := store.GetJobsForUser(1)
+	if err != nil {
+		t.Fatalf("GetJobsForUser() error: %v", err)
+	}
+	if len(jobs) != 3 {
+		t.Errorf("len(jobs) = %d, want 3", len(jobs))
+	}
+}
