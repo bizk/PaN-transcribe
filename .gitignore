@@ -6,3 +6,4 @@ logs/*.log
 config.yaml
 bin/
 *.db
+.env
