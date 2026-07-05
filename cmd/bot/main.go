@@ -53,9 +53,8 @@ func main() {
 		log.Fatalf("Failed to create bot: %v", err)
 	}
 
-	// Initialize transcribers
-	localTranscriber := transcribe.NewWhisperTranscriber(cfg.Whisper.ModelPath, cfg.Whisper.Threads)
-	cloudTranscriber := transcribe.NewOpenAITranscriber(cfg.OpenAI.APIKey, cfg.OpenAI.WhisperModel)
+	// Initialize transcriber
+	transcriber := transcribe.NewMistralTranscriber(cfg.Mistral.APIKey, cfg.Mistral.Model)
 
 	// Initialize summary generator
 	summaryGen := summary.NewGenerator(cfg.OpenAI.APIKey, cfg.OpenAI.SummaryModel)
@@ -67,8 +66,7 @@ func main() {
 	})
 	w.SetJobStore(jobStore)
 	w.SetSettingsStore(settingsStore)
-	w.SetLocalTranscriber(localTranscriber)
-	w.SetCloudTranscriber(cloudTranscriber)
+	w.SetTranscriber(transcriber)
 	w.SetSummaryGenerator(summaryGen)
 	w.SetNotifier(tgBot)
 

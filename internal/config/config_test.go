@@ -17,17 +17,15 @@ telegram:
   allowed_users:
     - 123456789
 
+mistral:
+  api_key: "${MISTRAL_API_KEY}"
+  model: "mistral-large-latest"
+
 openai:
   api_key: "${OPENAI_API_KEY}"
-  whisper_model: "whisper-1"
   summary_model: "gpt-4o-mini"
 
-whisper:
-  model_path: "./whisper.cpp/models/ggml-small.bin"
-  threads: 4
-
 processing:
-  default_mode: "local"
   max_file_size_mb: 100
   output_retention_days: 30
 
@@ -40,6 +38,7 @@ summary:
 
 	// Set env vars
 	t.Setenv("TELEGRAM_BOT_TOKEN", "test-token")
+	t.Setenv("MISTRAL_API_KEY", "test-mistral-key")
 	t.Setenv("OPENAI_API_KEY", "test-api-key")
 
 	cfg, err := Load(configPath)
@@ -49,6 +48,9 @@ summary:
 
 	if cfg.Telegram.BotToken != "test-token" {
 		t.Errorf("BotToken = %q, want %q", cfg.Telegram.BotToken, "test-token")
+	}
+	if cfg.Mistral.APIKey != "test-mistral-key" {
+		t.Errorf("Mistral.APIKey = %q, want %q", cfg.Mistral.APIKey, "test-mistral-key")
 	}
 	if cfg.OpenAI.APIKey != "test-api-key" {
 		t.Errorf("APIKey = %q, want %q", cfg.OpenAI.APIKey, "test-api-key")
@@ -72,17 +74,15 @@ telegram:
   allowed_users:
     - 123456789
 
+mistral:
+  api_key: "${MISTRAL_API_KEY}"
+  model: "mistral-large-latest"
+
 openai:
   api_key: "${OPENAI_API_KEY}"
-  whisper_model: "whisper-1"
   summary_model: "gpt-4o-mini"
 
-whisper:
-  model_path: "./whisper.cpp/models/ggml-small.bin"
-  threads: 4
-
 processing:
-  default_mode: "local"
   max_file_size_mb: 100
   output_retention_days: 30
 
@@ -93,8 +93,9 @@ summary:
 		t.Fatal(err)
 	}
 
-	// Set only one env var, leave the other unset
+	// Set only some env vars, leave OPENAI_API_KEY unset
 	t.Setenv("TELEGRAM_BOT_TOKEN", "test-token")
+	t.Setenv("MISTRAL_API_KEY", "test-mistral-key")
 	// OPENAI_API_KEY is intentionally not set
 
 	cfg, err := Load(configPath)

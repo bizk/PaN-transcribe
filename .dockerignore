@@ -1,0 +1,49 @@
+# Build artifacts
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test and coverage files
+*.test
+*.out
+coverage.txt
+*.prof
+
+# Data directories (should be mounted as volumes)
+data/
+logs/
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+!CLAUDE.md
+docs/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Config files with potential secrets
+config.yaml
+*.env
+.env*
+
+# CI/CD
+.github/
+
+# Docker files (no need to copy into image)
+Dockerfile*
+docker-compose*.yml
+.dockerignore

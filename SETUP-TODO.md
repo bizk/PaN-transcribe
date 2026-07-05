@@ -38,30 +38,6 @@ sqlite3 --version
 
 ---
 
-## 3. Install whisper.cpp
-
-```bash
-# Clone and build whisper.cpp
-cd ~
-git clone https://github.com/ggerganov/whisper.cpp.git
-cd whisper.cpp
-
-# Build (uses ARM optimizations automatically on Pi)
-make
-
-# Download Spanish model (~466MB)
-./models/download-ggml-model.sh small
-
-# Verify it works
-./main -m models/ggml-small.bin -l es -f samples/jfk.wav
-
-# Add to PATH (or note the full path for config)
-echo 'export PATH="$HOME/whisper.cpp:$PATH"' >> ~/.bashrc
-source ~/.bashrc
-```
-
----
-
 ## 4. Deploy the Bot
 
 ```bash
@@ -192,18 +168,18 @@ journalctl -u pan-transcribe -f
 
 ## Quick Reference
 
-| Item | Where to get it |
-|------|-----------------|
-| Bot token | @BotFather on Telegram |
-| User ID | @userinfobot on Telegram |
+| Item       | Where to get it              |
+| ---------- | ---------------------------- |
+| Bot token  | @BotFather on Telegram       |
+| User ID    | @userinfobot on Telegram     |
 | OpenAI key | platform.openai.com/api-keys |
 
-| Command | What it does |
-|---------|--------------|
-| `sudo systemctl start pan-transcribe` | Start bot |
-| `sudo systemctl stop pan-transcribe` | Stop bot |
-| `sudo systemctl restart pan-transcribe` | Restart bot |
-| `journalctl -u pan-transcribe -f` | View live logs |
+| Command                                      | What it does    |
+| -------------------------------------------- | --------------- |
+| `sudo systemctl start pan-transcribe`        | Start bot       |
+| `sudo systemctl stop pan-transcribe`         | Stop bot        |
+| `sudo systemctl restart pan-transcribe`      | Restart bot     |
+| `journalctl -u pan-transcribe -f`            | View live logs  |
 | `sqlite3 data/jobs.db "SELECT * FROM jobs;"` | Check job queue |
 
 ---

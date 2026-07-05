@@ -86,10 +86,6 @@ func (b *Bot) handleCommand(msg *tgbotapi.Message) {
 		b.handleSetPrompt(msg)
 	case "showprompt":
 		b.handleShowPrompt(msg)
-	case "cloud":
-		b.handleCloud(msg)
-	case "local":
-		b.handleLocal(msg)
 	default:
 		b.reply(msg.Chat.ID, "Comando desconocido. Usa /start para ver los comandos disponibles.")
 	}

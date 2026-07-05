@@ -10,8 +10,8 @@ import (
 
 type Config struct {
 	Telegram   TelegramConfig   `mapstructure:"telegram"`
+	Mistral    MistralConfig    `mapstructure:"mistral"`
 	OpenAI     OpenAIConfig     `mapstructure:"openai"`
-	Whisper    WhisperConfig    `mapstructure:"whisper"`
 	Processing ProcessingConfig `mapstructure:"processing"`
 	Summary    SummaryConfig    `mapstructure:"summary"`
 }
@@ -21,21 +21,19 @@ type TelegramConfig struct {
 	AllowedUsers []int64 `mapstructure:"allowed_users"`
 }
 
+type MistralConfig struct {
+	APIKey string `mapstructure:"api_key"`
+	Model  string `mapstructure:"model"`
+}
+
 type OpenAIConfig struct {
 	APIKey       string `mapstructure:"api_key"`
-	WhisperModel string `mapstructure:"whisper_model"`
 	SummaryModel string `mapstructure:"summary_model"`
 }
 
-type WhisperConfig struct {
-	ModelPath string `mapstructure:"model_path"`
-	Threads   int    `mapstructure:"threads"`
-}
-
 type ProcessingConfig struct {
-	DefaultMode         string `mapstructure:"default_mode"`
-	MaxFileSizeMB       int    `mapstructure:"max_file_size_mb"`
-	OutputRetentionDays int    `mapstructure:"output_retention_days"`
+	MaxFileSizeMB       int `mapstructure:"max_file_size_mb"`
+	OutputRetentionDays int `mapstructure:"output_retention_days"`
 }
 
 type SummaryConfig struct {

@@ -29,8 +29,7 @@ type Worker struct {
 	config           Config
 	jobStore         *queue.JobStore
 	settingsStore    *queue.SettingsStore
-	localTranscriber transcribe.Transcriber
-	cloudTranscriber transcribe.Transcriber
+	transcriber      transcribe.Transcriber
 	summaryGenerator *summary.Generator
 	notifier         ResultNotifier
 	stopCh           chan struct{}
@@ -52,12 +51,8 @@ func (w *Worker) SetSettingsStore(store *queue.SettingsStore) {
 	w.settingsStore = store
 }
 
-func (w *Worker) SetLocalTranscriber(t transcribe.Transcriber) {
-	w.localTranscriber = t
-}
-
-func (w *Worker) SetCloudTranscriber(t transcribe.Transcriber) {
-	w.cloudTranscriber = t
+func (w *Worker) SetTranscriber(t transcribe.Transcriber) {
+	w.transcriber = t
 }
 
 func (w *Worker) SetSummaryGenerator(g *summary.Generator) {
@@ -155,21 +150,13 @@ func (w *Worker) processNextJob(ctx context.Context) {
 }
 
 func (w *Worker) processJob(ctx context.Context, job *queue.Job) (outputPath, summaryPath string, err error) {
-	// Select transcriber based on mode
-	var t transcribe.Transcriber
-	if job.Mode == "cloud" {
-		t = w.cloudTranscriber
-	} else {
-		t = w.localTranscriber
-	}
-
-	if t == nil {
-		return "", "", fmt.Errorf("transcriber not configured for mode: %s", job.Mode)
+	if w.transcriber == nil {
+		return "", "", fmt.Errorf("transcriber not configured")
 	}
 
 	// Transcribe
-	log.Printf("Transcribing with %s: %s", t.Name(), job.AudioPath)
-	result, err := t.Transcribe(ctx, job.AudioPath)
+	log.Printf("Transcribing with %s: %s", w.transcriber.Name(), job.AudioPath)
+	result, err := w.transcriber.Transcribe(ctx, job.AudioPath)
 	if err != nil {
 		// If local transcriber fails, we could retry with cloud
 		// For now, just return the error

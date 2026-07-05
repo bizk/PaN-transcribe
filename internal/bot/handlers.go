@@ -31,8 +31,6 @@ Comandos disponibles:
 /status - Ver estado de trabajos pendientes
 /setprompt <texto> - Personalizar prompt de resumen
 /showprompt - Ver prompt actual
-/cloud - Usar API de OpenAI (más rápido)
-/local - Usar Whisper local (por defecto)
 
 Envíame un archivo de audio (mp3, wav, m4a, ogg, flac) después de seleccionar el modo con /transcribe o /summarize.`
 
@@ -114,24 +112,6 @@ func (b *Bot) handleShowPrompt(msg *tgbotapi.Message) {
 	}
 }
 
-func (b *Bot) handleCloud(msg *tgbotapi.Message) {
-	if err := b.settingsStore.SetNextMode(msg.From.ID, "cloud"); err != nil {
-		log.Printf("Error setting mode: %v", err)
-		b.reply(msg.Chat.ID, "Error al configurar modo.")
-		return
-	}
-	b.reply(msg.Chat.ID, "El próximo audio se procesará con la API de OpenAI (más rápido).")
-}
-
-func (b *Bot) handleLocal(msg *tgbotapi.Message) {
-	if err := b.settingsStore.SetNextMode(msg.From.ID, "local"); err != nil {
-		log.Printf("Error setting mode: %v", err)
-		b.reply(msg.Chat.ID, "Error al configurar modo.")
-		return
-	}
-	b.reply(msg.Chat.ID, "El próximo audio se procesará con Whisper local.")
-}
-
 func (b *Bot) handleAudioUpload(msg *tgbotapi.Message) {
 	var fileID string
 	var fileName string
@@ -165,7 +145,7 @@ func (b *Bot) handleAudioUpload(msg *tgbotapi.Message) {
 		return
 	}
 
-	// Download file
+	// Get file info from Telegram
 	file, err := b.api.GetFile(tgbotapi.FileConfig{FileID: fileID})
 	if err != nil {
 		log.Printf("Error getting file: %v", err)
@@ -173,16 +153,10 @@ func (b *Bot) handleAudioUpload(msg *tgbotapi.Message) {
 		return
 	}
 
-	// Create job first to get ID for filename
-	mode, _ := b.settingsStore.GetAndClearNextMode(msg.From.ID)
-	if mode == "" {
-		mode = b.config.Processing.DefaultMode
-	}
+	// Notify user that download is starting
+	b.reply(msg.Chat.ID, "Descargando audio...")
 
-	// Get withSummary setting from user preferences (set by /transcribe or /summarize commands)
-	withSummary, _ := b.settingsStore.GetAndClearNextWithSummary(msg.From.ID)
-
-	// Download to temp file
+	// Prepare audio directory
 	audioDir := filepath.Join(b.dataDir, "audio")
 	if err := os.MkdirAll(audioDir, 0755); err != nil {
 		log.Printf("Error creating audio dir: %v", err)
@@ -190,50 +164,52 @@ func (b *Bot) handleAudioUpload(msg *tgbotapi.Message) {
 		return
 	}
 
-	// Create job
+	// Download to temp file first (use timestamp to avoid conflicts)
+	tempPath := filepath.Join(audioDir, fmt.Sprintf("temp_%d_%d%s", msg.Chat.ID, msg.MessageID, ext))
+	if err := b.downloadFile(file.Link(b.api.Token), tempPath); err != nil {
+		log.Printf("Error downloading file: %v", err)
+		b.reply(msg.Chat.ID, "Error al descargar el archivo.")
+		return
+	}
+
+	// Get withSummary setting from user preferences (set by /transcribe or /summarize commands)
+	withSummary, _ := b.settingsStore.GetAndClearNextWithSummary(msg.From.ID)
+
+	// Create job with audio path already set
 	job := &queue.Job{
 		ChatID:      msg.Chat.ID,
 		MessageID:   msg.MessageID,
-		Mode:        mode,
+		AudioPath:   tempPath,
 		WithSummary: withSummary,
 	}
 
 	jobID, err := b.jobStore.Create(job)
 	if err != nil {
 		log.Printf("Error creating job: %v", err)
+		os.Remove(tempPath) // Clean up downloaded file
 		b.reply(msg.Chat.ID, "Error al crear el trabajo.")
 		return
 	}
 
-	// Download file
-	audioPath := filepath.Join(audioDir, fmt.Sprintf("%d%s", jobID, ext))
-	if err := b.downloadFile(file.Link(b.api.Token), audioPath); err != nil {
-		log.Printf("Error downloading file: %v", err)
-		b.jobStore.Fail(jobID, "Error al descargar archivo")
-		b.reply(msg.Chat.ID, "Error al descargar el archivo.")
-		return
-	}
-
-	// Update job with audio path
-	if err := b.setJobAudioPath(jobID, audioPath); err != nil {
-		log.Printf("Error setting audio path: %v", err)
-		b.reply(msg.Chat.ID, "Error interno.")
-		return
+	// Rename temp file to final path with job ID
+	finalPath := filepath.Join(audioDir, fmt.Sprintf("%d%s", jobID, ext))
+	if err := os.Rename(tempPath, finalPath); err != nil {
+		log.Printf("Error renaming file: %v", err)
+		// File is still at tempPath, update the job to use that path
+	} else {
+		// Update job with final path
+		if err := b.setJobAudioPath(jobID, finalPath); err != nil {
+			log.Printf("Error updating audio path: %v", err)
+		}
 	}
 
 	// Get queue position
 	position, _ := b.jobStore.GetPendingBefore(jobID)
 	position++ // 1-indexed for user
 
-	// Estimate time (rough: 1 min audio = 2 min processing for local)
-	estimatedMinutes := 5 // Base estimate
-	if mode == "cloud" {
-		estimatedMinutes = 2
-	}
-
 	b.reply(msg.Chat.ID, fmt.Sprintf(
-		"Audio recibido. Posición en cola: #%d. Tiempo estimado: ~%d minutos. Usa /status para ver el progreso.",
-		position, estimatedMinutes,
+		"Audio recibido. Posición en cola: #%d. Usa /status para ver el progreso.",
+		position,
 	))
 }
 

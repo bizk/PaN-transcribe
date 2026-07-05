@@ -3,17 +3,15 @@ telegram:
   allowed_users:
     - 123456789  # Your Telegram user ID (get it from @userinfobot)
 
+mistral:
+  api_key: "${MISTRAL_API_KEY}"
+  model: "mistral-large-latest"
+
 openai:
   api_key: "${OPENAI_API_KEY}"
-  whisper_model: "whisper-1"
   summary_model: "gpt-4o-mini"
 
-whisper:
-  model_path: "./whisper.cpp/models/ggml-small.bin"
-  threads: 4
-
 processing:
-  default_mode: "local"  # "local" for whisper.cpp, "cloud" for OpenAI API
   max_file_size_mb: 100
   output_retention_days: 30
 

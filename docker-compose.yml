@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  pan-transcribe:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pan-transcribe-bot
+    restart: unless-stopped
+
+    # Environment variables (replace with your actual values or use .env file)
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - MISTRAL_API_KEY=${MISTRAL_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - TZ=America/Argentina/Buenos_Aires
+
+    # Mount volumes for persistence and configuration
+    volumes:
+      # Config file
+      - ./config.yaml:/app/config.yaml:ro
+
+      # Data persistence
+      - ./data:/app/data
+
+      # Logs
+      - ./logs:/app/logs
+
+    # Resource limits (adjust based on your needs)
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
+
+    # Health check (requires implementation in the bot)
+    # healthcheck:
+    #   test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+    #   start_period: 40s
