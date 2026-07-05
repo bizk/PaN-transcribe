@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -11,6 +10,7 @@ import (
 	"github.com/override/pan-transcribe/internal/bot"
 	"github.com/override/pan-transcribe/internal/cleanup"
 	"github.com/override/pan-transcribe/internal/config"
+	"github.com/override/pan-transcribe/internal/logger"
 	"github.com/override/pan-transcribe/internal/queue"
 	"github.com/override/pan-transcribe/internal/summary"
 	"github.com/override/pan-transcribe/internal/transcribe"
@@ -27,7 +27,7 @@ func main() {
 	// Load configuration
 	cfg, err := config.Load(configPath)
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		logger.Fatal("Failed to load config: %v", err)
 	}
 
 	// Determine data directory
@@ -36,28 +36,45 @@ func main() {
 		dataDir = envDir
 	}
 
+	// Initialize logging
+	logDir := "logs"
+	if envLogDir := os.Getenv("LOG_DIR"); envLogDir != "" {
+		logDir = envLogDir
+	}
+	debug := os.Getenv("DEBUG") == "true"
+	if err := logger.InitializeLogging(logDir, debug); err != nil {
+		logger.Fatal("Failed to initialize logging: %v", err)
+	}
+
+	logger.Info("Starting PaN Transcribe Bot")
+	logger.Info("Config loaded from: %s", configPath)
+
 	// Initialize database
 	dbPath := filepath.Join(dataDir, "jobs.db")
 	db, err := queue.OpenDB(dbPath)
 	if err != nil {
-		log.Fatalf("Failed to open database: %v", err)
+		logger.Fatal("Failed to open database: %v", err)
 	}
 	defer db.Close()
 
 	jobStore := queue.NewJobStore(db)
 	settingsStore := queue.NewSettingsStore(db)
 
+	logger.Info("Database initialized at: %s", dbPath)
+
 	// Initialize bot
 	tgBot, err := bot.New(cfg, jobStore, settingsStore, dataDir)
 	if err != nil {
-		log.Fatalf("Failed to create bot: %v", err)
+		logger.Fatal("Failed to create bot: %v", err)
 	}
 
 	// Initialize transcriber
 	transcriber := transcribe.NewMistralTranscriber(cfg.Mistral.APIKey, cfg.Mistral.Model)
+	logger.Info("Transcriber initialized: Mistral API (%s)", cfg.Mistral.Model)
 
 	// Initialize summary generator
 	summaryGen := summary.NewGenerator(cfg.OpenAI.APIKey, cfg.OpenAI.SummaryModel)
+	logger.Info("Summary generator initialized: OpenAI (%s)", cfg.OpenAI.SummaryModel)
 
 	// Initialize worker
 	w := worker.New(worker.Config{
@@ -85,8 +102,8 @@ func main() {
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
-		<-sigCh
-		log.Println("Shutdown signal received")
+		sig := <-sigCh
+		logger.Info("Shutdown signal received: %v", sig)
 		cancel()
 		w.Stop()
 		cleaner.Stop()
@@ -94,15 +111,15 @@ func main() {
 
 	// Start cleanup scheduler
 	if err := cleaner.Start(); err != nil {
-		log.Printf("Warning: cleanup scheduler failed to start: %v", err)
+		logger.Warn("Cleanup scheduler failed to start: %v", err)
 	}
 
 	// Start worker in background
 	go w.Start(ctx)
 
 	// Start bot (blocking)
-	log.Println("Starting bot...")
+	logger.Info("Bot started and ready to receive messages")
 	if err := tgBot.Start(); err != nil {
-		log.Fatalf("Bot error: %v", err)
+		logger.Fatal("Bot error: %v", err)
 	}
 }

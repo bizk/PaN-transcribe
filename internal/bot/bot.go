@@ -2,10 +2,10 @@ package bot
 
 import (
 	"fmt"
-	"log"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/override/pan-transcribe/internal/config"
+	"github.com/override/pan-transcribe/internal/logger"
 	"github.com/override/pan-transcribe/internal/queue"
 )
 
@@ -16,6 +16,7 @@ type Bot struct {
 	settingsStore *queue.SettingsStore
 	config        *config.Config
 	dataDir       string
+	log           *logger.Logger
 }
 
 func New(cfg *config.Config, jobStore *queue.JobStore, settingsStore *queue.SettingsStore, dataDir string) (*Bot, error) {
@@ -24,7 +25,9 @@ func New(cfg *config.Config, jobStore *queue.JobStore, settingsStore *queue.Sett
 		return nil, fmt.Errorf("creating bot API: %w", err)
 	}
 
-	log.Printf("Authorized on account %s", api.Self.UserName)
+	log := logger.New("bot")
+	log.Info("Authorized on account: %s", api.Self.UserName)
+	log.Info("Allowed users: %v", cfg.Telegram.AllowedUsers)
 
 	return &Bot{
 		api:           api,
@@ -33,6 +36,7 @@ func New(cfg *config.Config, jobStore *queue.JobStore, settingsStore *queue.Sett
 		settingsStore: settingsStore,
 		config:        cfg,
 		dataDir:       dataDir,
+		log:           log,
 	}, nil
 }
 
@@ -49,7 +53,7 @@ func (b *Bot) Start() error {
 
 		// Check authorization
 		if !b.auth.IsAllowed(update.Message.From.ID) {
-			log.Printf("Unauthorized access attempt from user %d", update.Message.From.ID)
+			b.log.Warn("Unauthorized access attempt from user_id=%d", update.Message.From.ID)
 			continue
 		}
 
@@ -94,7 +98,7 @@ func (b *Bot) handleCommand(msg *tgbotapi.Message) {
 func (b *Bot) reply(chatID int64, text string) {
 	msg := tgbotapi.NewMessage(chatID, text)
 	if _, err := b.api.Send(msg); err != nil {
-		log.Printf("Error sending message: %v", err)
+		b.log.WithField("chat_id", chatID).Error("Failed to send message: %v", err)
 	}
 }
 

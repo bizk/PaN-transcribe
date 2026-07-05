@@ -1,11 +1,11 @@
 package cleanup
 
 import (
-	"log"
 	"os"
 	"path/filepath"
 	"time"
 
+	"github.com/override/pan-transcribe/internal/logger"
 	"github.com/robfig/cron/v3"
 )
 
@@ -18,11 +18,13 @@ type Config struct {
 type Cleanup struct {
 	config Config
 	cron   *cron.Cron
+	log    *logger.Logger
 }
 
 func New(config Config) *Cleanup {
 	return &Cleanup{
 		config: config,
+		log:    logger.New("cleanup"),
 	}
 }
 
@@ -31,11 +33,14 @@ func (c *Cleanup) Start() error {
 
 	// Run cleanup daily at 3 AM
 	_, err := c.cron.AddFunc("0 3 * * *", func() {
+		c.log.Info("Starting scheduled cleanup")
 		removed, err := c.CleanOldFiles()
 		if err != nil {
-			log.Printf("Cleanup error: %v", err)
+			c.log.Error("Cleanup failed: %v", err)
 		} else if removed > 0 {
-			log.Printf("Cleanup removed %d old files", removed)
+			c.log.Info("Cleanup removed %d old files", removed)
+		} else {
+			c.log.Info("Cleanup completed, no files to remove")
 		}
 	})
 	if err != nil {
@@ -43,7 +48,7 @@ func (c *Cleanup) Start() error {
 	}
 
 	c.cron.Start()
-	log.Println("Cleanup scheduler started")
+	c.log.Info("Cleanup scheduler started (runs daily at 3 AM)")
 	return nil
 }
 
@@ -101,15 +106,16 @@ func (c *Cleanup) cleanDirectory(dir string, cutoff time.Time) (int, error) {
 
 		info, err := entry.Info()
 		if err != nil {
-			log.Printf("Warning: failed to get info for %s: %v", entry.Name(), err)
+			c.log.Warn("Failed to get info for %s: %v", entry.Name(), err)
 			continue
 		}
 
 		if info.ModTime().Before(cutoff) {
 			path := filepath.Join(dir, entry.Name())
 			if err := os.Remove(path); err != nil {
-				log.Printf("Failed to remove %s: %v", path, err)
+				c.log.Warn("Failed to remove %s: %v", path, err)
 			} else {
+				c.log.Debug("Removed old file: %s", path)
 				removed++
 			}
 		}

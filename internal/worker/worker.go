@@ -3,12 +3,12 @@ package worker
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
 
+	"github.com/override/pan-transcribe/internal/logger"
 	"github.com/override/pan-transcribe/internal/queue"
 	"github.com/override/pan-transcribe/internal/summary"
 	"github.com/override/pan-transcribe/internal/transcribe"
@@ -34,12 +34,14 @@ type Worker struct {
 	notifier         ResultNotifier
 	stopCh           chan struct{}
 	stopOnce         sync.Once
+	log              *logger.Logger
 }
 
 func New(config Config) *Worker {
 	return &Worker{
 		config: config,
 		stopCh: make(chan struct{}),
+		log:    logger.New("worker"),
 	}
 }
 
@@ -65,17 +67,17 @@ func (w *Worker) SetNotifier(n ResultNotifier) {
 
 func (w *Worker) Start(ctx context.Context) {
 	if w.jobStore == nil {
-		log.Fatal("Worker started without jobStore")
+		w.log.Fatal("Worker started without jobStore")
 	}
 	if w.settingsStore == nil {
-		log.Fatal("Worker started without settingsStore")
+		w.log.Fatal("Worker started without settingsStore")
 	}
 
-	log.Println("Worker started")
+	w.log.Info("Worker started, polling every 5 seconds")
 
 	// Reset any jobs that were processing when we last shut down
 	if err := w.jobStore.ResetProcessingJobs(); err != nil {
-		log.Printf("Error resetting processing jobs: %v", err)
+		w.log.Warn("Failed to reset processing jobs: %v", err)
 	}
 
 	ticker := time.NewTicker(5 * time.Second)
@@ -84,10 +86,10 @@ func (w *Worker) Start(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			log.Println("Worker stopping due to context cancellation")
+			w.log.Info("Worker stopping due to context cancellation")
 			return
 		case <-w.stopCh:
-			log.Println("Worker stopping")
+			w.log.Info("Worker stopping")
 			return
 		case <-ticker.C:
 			w.processNextJob(ctx)
@@ -104,7 +106,7 @@ func (w *Worker) Stop() {
 func (w *Worker) processNextJob(ctx context.Context) {
 	job, err := w.jobStore.GetNextPending()
 	if err != nil {
-		log.Printf("Error getting next job: %v", err)
+		w.log.Error("Failed to get next job: %v", err)
 		return
 	}
 
@@ -112,16 +114,21 @@ func (w *Worker) processNextJob(ctx context.Context) {
 		return // No pending jobs
 	}
 
-	log.Printf("Processing job #%d", job.ID)
+	jobLog := w.log.WithFields(map[string]interface{}{
+		"job_id":  job.ID,
+		"chat_id": job.ChatID,
+	})
+
+	jobLog.Info("Processing job")
 
 	if err := w.jobStore.UpdateStatus(job.ID, queue.StatusProcessing); err != nil {
-		log.Printf("Error updating job status: %v", err)
+		jobLog.Error("Failed to update job status: %v", err)
 		return
 	}
 
 	outputPath, summaryPath, err := w.processJob(ctx, job)
 	if err != nil {
-		log.Printf("Job #%d failed: %v", job.ID, err)
+		jobLog.Error("Job failed: %v", err)
 		w.jobStore.Fail(job.ID, err.Error())
 		if w.notifier != nil {
 			w.notifier.SendError(job.ChatID, err.Error())
@@ -132,7 +139,7 @@ func (w *Worker) processNextJob(ctx context.Context) {
 	}
 
 	if err := w.jobStore.Complete(job.ID, outputPath, summaryPath); err != nil {
-		log.Printf("Error completing job: %v", err)
+		jobLog.Error("Failed to complete job: %v", err)
 		return
 	}
 
@@ -142,11 +149,11 @@ func (w *Worker) processNextJob(ctx context.Context) {
 	// Notify user
 	if w.notifier != nil {
 		if err := w.notifier.SendResult(job.ChatID, outputPath, summaryPath); err != nil {
-			log.Printf("Error notifying user: %v", err)
+			jobLog.Error("Failed to notify user: %v", err)
 		}
 	}
 
-	log.Printf("Job #%d completed successfully", job.ID)
+	jobLog.Info("Job completed successfully")
 }
 
 func (w *Worker) processJob(ctx context.Context, job *queue.Job) (outputPath, summaryPath string, err error) {
@@ -154,14 +161,16 @@ func (w *Worker) processJob(ctx context.Context, job *queue.Job) (outputPath, su
 		return "", "", fmt.Errorf("transcriber not configured")
 	}
 
+	jobLog := w.log.WithField("job_id", job.ID)
+
 	// Transcribe
-	log.Printf("Transcribing with %s: %s", w.transcriber.Name(), job.AudioPath)
+	jobLog.Info("Starting transcription with %s: %s", w.transcriber.Name(), job.AudioPath)
+	startTime := time.Now()
 	result, err := w.transcriber.Transcribe(ctx, job.AudioPath)
 	if err != nil {
-		// If local transcriber fails, we could retry with cloud
-		// For now, just return the error
 		return "", "", fmt.Errorf("transcription failed: %w", err)
 	}
+	jobLog.Info("Transcription completed in %v", time.Since(startTime))
 
 	// Save transcription
 	outputDir := filepath.Join(w.config.DataDir, "output")
@@ -173,28 +182,33 @@ func (w *Worker) processJob(ctx context.Context, job *queue.Job) (outputPath, su
 	if err := os.WriteFile(outputPath, []byte(result.Text), 0644); err != nil {
 		return "", "", fmt.Errorf("saving transcription: %w", err)
 	}
+	jobLog.Info("Transcription saved to: %s", outputPath)
 
 	// Generate summary if requested
 	if job.WithSummary && w.summaryGenerator != nil {
-		log.Printf("Generating summary for job #%d", job.ID)
+		jobLog.Info("Starting summary generation")
 
 		// Get custom prompt or use default
 		prompt, err := w.settingsStore.GetCustomPrompt(job.ChatID)
 		if err != nil {
-			log.Printf("Error getting custom prompt: %v", err)
+			jobLog.Warn("Failed to get custom prompt: %v", err)
 		}
 		if prompt == "" {
 			prompt = w.config.DefaultPrompt
 		}
 
+		summaryStartTime := time.Now()
 		summaryText, err := w.summaryGenerator.Generate(ctx, result.Text, prompt)
 		if err != nil {
-			log.Printf("Summary generation failed: %v", err)
+			jobLog.Warn("Summary generation failed: %v", err)
 			// Don't fail the job, just skip summary
 		} else {
+			jobLog.Info("Summary generated in %v", time.Since(summaryStartTime))
 			summaryPath = filepath.Join(outputDir, fmt.Sprintf("%d_summary.txt", job.ID))
 			if err := os.WriteFile(summaryPath, []byte(summaryText), 0644); err != nil {
-				log.Printf("Error saving summary: %v", err)
+				jobLog.Error("Failed to save summary: %v", err)
+			} else {
+				jobLog.Info("Summary saved to: %s", summaryPath)
 			}
 		}
 	}

@@ -3,7 +3,6 @@ package bot
 import (
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -39,22 +38,24 @@ Envíame un archivo de audio (mp3, wav, m4a, ogg, flac) después de seleccionar 
 
 func (b *Bot) handleTranscribe(msg *tgbotapi.Message) {
 	if err := b.settingsStore.SetNextWithSummary(msg.From.ID, false); err != nil {
-		log.Printf("Error setting mode: %v", err)
+		b.log.WithField("user_id", msg.From.ID).Error("Failed to set transcribe mode: %v", err)
 	}
+	b.log.WithField("user_id", msg.From.ID).Info("User activated transcribe-only mode")
 	b.reply(msg.Chat.ID, "Modo transcripción activado. Envíame un archivo de audio.")
 }
 
 func (b *Bot) handleSummarize(msg *tgbotapi.Message) {
 	if err := b.settingsStore.SetNextWithSummary(msg.From.ID, true); err != nil {
-		log.Printf("Error setting mode: %v", err)
+		b.log.WithField("user_id", msg.From.ID).Error("Failed to set summarize mode: %v", err)
 	}
+	b.log.WithField("user_id", msg.From.ID).Info("User activated transcribe+summarize mode")
 	b.reply(msg.Chat.ID, "Modo transcripción + resumen activado. Envíame un archivo de audio.")
 }
 
 func (b *Bot) handleStatus(msg *tgbotapi.Message) {
 	jobs, err := b.jobStore.GetJobsForUser(msg.Chat.ID)
 	if err != nil {
-		log.Printf("Error getting jobs: %v", err)
+		b.log.WithField("chat_id", msg.Chat.ID).Error("Failed to get jobs: %v", err)
 		b.reply(msg.Chat.ID, "Error al obtener estado de trabajos.")
 		return
 	}
@@ -88,18 +89,19 @@ func (b *Bot) handleSetPrompt(msg *tgbotapi.Message) {
 	}
 
 	if err := b.settingsStore.SetCustomPrompt(msg.From.ID, prompt); err != nil {
-		log.Printf("Error setting prompt: %v", err)
+		b.log.WithField("user_id", msg.From.ID).Error("Failed to set custom prompt: %v", err)
 		b.reply(msg.Chat.ID, "Error al guardar el prompt.")
 		return
 	}
 
+	b.log.WithField("user_id", msg.From.ID).Info("User set custom prompt")
 	b.reply(msg.Chat.ID, "Prompt personalizado guardado.")
 }
 
 func (b *Bot) handleShowPrompt(msg *tgbotapi.Message) {
 	prompt, err := b.settingsStore.GetCustomPrompt(msg.From.ID)
 	if err != nil {
-		log.Printf("Error getting prompt: %v", err)
+		b.log.WithField("user_id", msg.From.ID).Error("Failed to get custom prompt: %v", err)
 		b.reply(msg.Chat.ID, "Error al obtener el prompt.")
 		return
 	}
@@ -148,18 +150,26 @@ func (b *Bot) handleAudioUpload(msg *tgbotapi.Message) {
 	// Get file info from Telegram
 	file, err := b.api.GetFile(tgbotapi.FileConfig{FileID: fileID})
 	if err != nil {
-		log.Printf("Error getting file: %v", err)
+		b.log.WithFields(map[string]interface{}{
+			"chat_id": msg.Chat.ID,
+			"file_id": fileID,
+		}).Error("Failed to get file from Telegram: %v", err)
 		b.reply(msg.Chat.ID, "Error al obtener el archivo.")
 		return
 	}
 
 	// Notify user that download is starting
+	b.log.WithFields(map[string]interface{}{
+		"chat_id":   msg.Chat.ID,
+		"file_name": fileName,
+		"file_size": fileSize,
+	}).Info("Downloading audio file")
 	b.reply(msg.Chat.ID, "Descargando audio...")
 
 	// Prepare audio directory
 	audioDir := filepath.Join(b.dataDir, "audio")
 	if err := os.MkdirAll(audioDir, 0755); err != nil {
-		log.Printf("Error creating audio dir: %v", err)
+		b.log.Error("Failed to create audio directory: %v", err)
 		b.reply(msg.Chat.ID, "Error interno al preparar directorio.")
 		return
 	}
@@ -167,7 +177,7 @@ func (b *Bot) handleAudioUpload(msg *tgbotapi.Message) {
 	// Download to temp file first (use timestamp to avoid conflicts)
 	tempPath := filepath.Join(audioDir, fmt.Sprintf("temp_%d_%d%s", msg.Chat.ID, msg.MessageID, ext))
 	if err := b.downloadFile(file.Link(b.api.Token), tempPath); err != nil {
-		log.Printf("Error downloading file: %v", err)
+		b.log.WithField("file_path", tempPath).Error("Failed to download file: %v", err)
 		b.reply(msg.Chat.ID, "Error al descargar el archivo.")
 		return
 	}
@@ -185,7 +195,7 @@ func (b *Bot) handleAudioUpload(msg *tgbotapi.Message) {
 
 	jobID, err := b.jobStore.Create(job)
 	if err != nil {
-		log.Printf("Error creating job: %v", err)
+		b.log.WithField("chat_id", msg.Chat.ID).Error("Failed to create job: %v", err)
 		os.Remove(tempPath) // Clean up downloaded file
 		b.reply(msg.Chat.ID, "Error al crear el trabajo.")
 		return
@@ -194,18 +204,29 @@ func (b *Bot) handleAudioUpload(msg *tgbotapi.Message) {
 	// Rename temp file to final path with job ID
 	finalPath := filepath.Join(audioDir, fmt.Sprintf("%d%s", jobID, ext))
 	if err := os.Rename(tempPath, finalPath); err != nil {
-		log.Printf("Error renaming file: %v", err)
+		b.log.WithFields(map[string]interface{}{
+			"job_id":  jobID,
+			"old_path": tempPath,
+			"new_path": finalPath,
+		}).Warn("Failed to rename file: %v", err)
 		// File is still at tempPath, update the job to use that path
 	} else {
 		// Update job with final path
 		if err := b.setJobAudioPath(jobID, finalPath); err != nil {
-			log.Printf("Error updating audio path: %v", err)
+			b.log.WithField("job_id", jobID).Error("Failed to update audio path: %v", err)
 		}
 	}
 
 	// Get queue position
 	position, _ := b.jobStore.GetPendingBefore(jobID)
 	position++ // 1-indexed for user
+
+	b.log.WithFields(map[string]interface{}{
+		"job_id":       jobID,
+		"chat_id":      msg.Chat.ID,
+		"with_summary": job.WithSummary,
+		"position":     position,
+	}).Info("Job created successfully")
 
 	b.reply(msg.Chat.ID, fmt.Sprintf(
 		"Audio recibido. Posición en cola: #%d. Usa /status para ver el progreso.",

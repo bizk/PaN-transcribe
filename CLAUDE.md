@@ -48,6 +48,7 @@ Telegram → Bot → JobStore (SQLite) → Worker → Transcriber + Summary → 
 | `summary/` | GPT-4o-mini summary generation with customizable prompts |
 | `cleanup/` | Cron-scheduled retention policy for output files |
 | `config/` | YAML config loader with `${ENV_VAR}` expansion |
+| `logger/` | Structured logging with levels (DEBUG, INFO, WARN, ERROR) and contextual fields |
 
 ### Entry Point
 
@@ -78,6 +79,26 @@ Required environment variables:
 Key settings:
 - `telegram.allowed_users` - list of authorized Telegram user IDs
 - `mistral.model` - Mistral audio model (default: mistral-large-latest)
+
+## Logging
+
+The application uses a structured logging system (`internal/logger`):
+
+- **Log Levels**: DEBUG, INFO, WARN, ERROR
+- **Contextual Fields**: Use `WithField()` or `WithFields()` to add context (user_id, job_id, chat_id, etc.)
+- **Output**: Logs to both stdout and file (`logs/bot_YYYY-MM-DD.log`)
+- **Debug Mode**: Set `DEBUG=true` environment variable to enable DEBUG level logs
+
+Example usage:
+```go
+log := logger.New("component-name")
+log.Info("Processing started")
+log.WithField("user_id", 123).Warn("Potential issue")
+log.WithFields(map[string]interface{}{
+    "job_id": 42,
+    "chat_id": 12345,
+}).Error("Processing failed: %v", err)
+```
 
 ## External Dependencies
 

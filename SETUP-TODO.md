@@ -14,7 +14,12 @@
   2. It replies with your user ID (a number like `123456789`)
   3. Save this - it restricts who can use your bot
 
-- [ ] **OpenAI API Key**
+- [ ] **Mistral API Key**
+  1. Go to https://console.mistral.ai/api-keys/
+  2. Create new API key
+  3. Save it: `xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
+
+- [ ] **OpenAI API Key** (for summaries)
   1. Go to https://platform.openai.com/api-keys
   2. Create new secret key
   3. Save it: `sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
@@ -38,7 +43,38 @@ sqlite3 --version
 
 ---
 
-## 4. Deploy the Bot
+## 3. Deploy the Bot
+
+### Option A: Docker (Recommended)
+
+```bash
+# Install Docker on Raspberry Pi
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+sudo usermod -aG docker $USER
+sudo apt-get install docker-compose-plugin
+
+# Log out and back in, then:
+cd ~/pan-transcribe
+
+# Set up configuration
+cp .env.example .env
+cp config.yaml.example config.yaml
+
+# Edit with your values
+nano .env
+nano config.yaml
+
+# Start the bot
+make init-dirs
+make docker-build
+make docker-run
+
+# View logs
+make docker-logs
+```
+
+### Option B: Manual Deployment
 
 ```bash
 # Create project directory
@@ -57,49 +93,21 @@ cd ~/pan-transcribe
 mkdir -p data/audio data/output logs
 
 # Create config file
-cat > config.yaml << 'EOF'
-telegram:
-  bot_token: "${TELEGRAM_BOT_TOKEN}"
-  allowed_users:
-    - YOUR_USER_ID_HERE
+cp config.yaml.example config.yaml
 
-openai:
-  api_key: "${OPENAI_API_KEY}"
-  whisper_model: "whisper-1"
-  summary_model: "gpt-4o-mini"
-
-whisper:
-  model_path: "/home/pi/whisper.cpp/models/ggml-small.bin"
-  threads: 4
-
-processing:
-  default_mode: "local"
-  max_file_size_mb: 100
-  output_retention_days: 30
-
-summary:
-  default_prompt: |
-    Eres un asistente para estudiantes de psicología. Resume esta transcripción
-    de clase incluyendo:
-    - Temas principales cubiertos
-    - Conceptos clave y definiciones
-    - Teorías o autores mencionados
-    - Puntos importantes para estudiar
-    Responde en español.
-EOF
-
-# Edit config.yaml and replace YOUR_USER_ID_HERE with your actual user ID
+# Edit config.yaml and set your Telegram user ID
 nano config.yaml
 ```
 
 ---
 
-## 5. Set Up Environment Variables
+## 4. Set Up Environment Variables
 
 ```bash
 # Create env file
 cat > ~/.pan-transcribe-env << 'EOF'
 export TELEGRAM_BOT_TOKEN="your-bot-token-here"
+export MISTRAL_API_KEY="your-mistral-key-here"
 export OPENAI_API_KEY="sk-your-openai-key-here"
 EOF
 
@@ -112,7 +120,7 @@ chmod 600 ~/.pan-transcribe-env
 
 ---
 
-## 6. Test Run
+## 5. Test Run
 
 ```bash
 # Load environment
@@ -126,12 +134,13 @@ cd ~/pan-transcribe
 # 1. Open Telegram
 # 2. Find your bot by username
 # 3. Send /start
-# 4. Send an audio file
+# 4. Send /transcribe or /summarize
+# 5. Send an audio file
 ```
 
 ---
 
-## 7. Set Up Systemd Service (auto-start on boot)
+## 6. Set Up Systemd Service (auto-start on boot)
 
 ```bash
 sudo tee /etc/systemd/system/pan-transcribe.service << 'EOF'
@@ -168,11 +177,12 @@ journalctl -u pan-transcribe -f
 
 ## Quick Reference
 
-| Item       | Where to get it              |
-| ---------- | ---------------------------- |
-| Bot token  | @BotFather on Telegram       |
-| User ID    | @userinfobot on Telegram     |
-| OpenAI key | platform.openai.com/api-keys |
+| Item         | Where to get it                  |
+| ------------ | -------------------------------- |
+| Bot token    | @BotFather on Telegram           |
+| User ID      | @userinfobot on Telegram         |
+| Mistral key  | console.mistral.ai/api-keys      |
+| OpenAI key   | platform.openai.com/api-keys     |
 
 | Command                                      | What it does    |
 | -------------------------------------------- | --------------- |
@@ -197,8 +207,13 @@ journalctl -u pan-transcribe --since "10 minutes ago"
 
 **Transcription failing?**
 ```bash
-# Test whisper directly
-~/whisper.cpp/main -m ~/whisper.cpp/models/ggml-small.bin -l es -f test.wav
+# Check if API keys are set correctly
+source ~/.pan-transcribe-env
+echo $MISTRAL_API_KEY  # Should show your key
+echo $OPENAI_API_KEY   # Should show your key
+
+# Check recent errors in logs
+journalctl -u pan-transcribe --since "1 hour ago" | grep -i error
 ```
 
 **Database issues?**
